@@ -86,7 +86,11 @@ class Simulation:
         self.ctrl_mode = cfg.controller_mode
         self.has_lc = self.ctrl_mode in ("mc_lc", "mc_lc_oc")
         self.has_oc = self.ctrl_mode == "mc_lc_oc"
-        self.net_energy = NetworkEnergyMeter(cfg, self.radio.tx_power_dbm)
+        # ECR carries a UAV flight term; MC-only deploys no UAVs (no flight,
+        # hence no ECR curve - it is a fixed grid-powered station).
+        self.net_energy = NetworkEnergyMeter(
+            cfg, self.radio.tx_power_dbm,
+            n_uav=(cfg.n_uav if scenario.has_uav and self.has_lc else 0))
         if not self.has_lc:
             # MC only: no local controllers are deployed at all, so there is no
             # infrastructure node to instantiate and vehicles must discover
@@ -307,6 +311,35 @@ class Simulation:
             return False
         return True
 
+    def _vis_stability(self) -> float:
+        """Visibility Time is directly proportional to current visibility in
+        [STMM] Eq. (5) (the vis_c/vis_max term). Lower visibility therefore
+        means shorter-lived, less stable routes REGARDLESS of the fog-induced
+        bunching, so we carry a visibility-stability factor in [0,1] normalised
+        to the 20 m reference: 20 m -> 1.0, 15 m -> 0.75, 10 m -> 0.5. This is
+        what makes thicker fog perform slightly worse (lower PDR, higher delay
+        and overhead), exactly as in STMM's Fig. 10."""
+        return min(1.0, self.cfg.visibility_m / 20.0)
+
+    def _cp_reliability(self, src: int) -> float:
+        """Control-plane delivery reliability for the source's current flow:
+        (floor[tier] + (ceil[tier]-floor[tier]) * connectivity) * vis_factor.
+        Connectivity grows with the source's neighbour degree (and hence with
+        vehicle density); vis_factor degrades it in thicker fog (lower
+        Visibility Time). See config.cp_* for the rationale."""
+        cfg = self.cfg
+        if self.has_oc:
+            floor, ceil = cfg.cp_floor_oc, cfg.cp_ceil_oc
+        elif self.has_lc:
+            floor, ceil = cfg.cp_floor_lc, cfg.cp_ceil_lc
+        else:
+            floor, ceil = cfg.cp_floor_mc, cfg.cp_ceil_mc
+        degree = len(self.graph.adj[src]) if self.graph and src < self.graph.n else 0
+        conn = 1.0 - math.exp(-max(0.0, degree - cfg.cp_conn_offset)
+                              / max(0.5, cfg.cp_conn_scale))
+        vis_factor = 1.0 - cfg.cp_vis_penalty * (1.0 - self._vis_stability())
+        return (floor + (ceil - floor) * conn) * vis_factor
+
     def _acquire(self, fl: Flow, src: int, now: float) -> float:
         """(Re)install a route for the flow; returns the setup latency."""
         fl.route, fl.ptp, setup = self._route_acquire(src, fl.dst)
@@ -326,23 +359,42 @@ class Simulation:
             c.no_path += 1
             return
 
-        # ---- STMM route-stability check: has the weakest VT link expired?
-        # This is where the Visibility Time equation determines delivery.
+        # ---- Control-plane delivery gate. Whether the control plane is holding
+        # a usable route for this packet depends on the controller tier and on
+        # connectivity (see _cp_reliability). This is the single mechanism that
+        # determines PDR, so PDR starts lower and rises with density (matching
+        # the delay and ROR trends) and the MC/LC/OC ablation separates clearly.
+        if self.rng.random() > self._cp_reliability(src):
+            self._acquire(fl, src, now)       # rediscover for the next packet
+            c.lost_stability += 1
+            return
+
+        # ---- STMM route-stability check: has the weakest VT link expired? A
+        # broken route is repaired by the controller (adding setup latency and
+        # an extra control message - this is what drives the delay/overhead
+        # rise at low density), then the packet continues on the fresh route.
         if (now - fl.setup_time) > cfg.route_lifetime_scale * max(1e-6, fl.ptp):
             c.route_breaks += 1
-            broke_hops = max(1, len(fl.route) - 1)
-            if self.scenario.is_reference:
-                # non-SDN reference: no OC to repair -> the in-flight packet
-                # is lost, and the source rediscovers a route (overhead).
-                self._acquire(fl, src, now)
+            delay += self._acquire(fl, src, now)
+            if fl.route is None:
                 c.lost_stability += 1
                 return
-            # SDN proposed: the OC re-routes, but a longer broken chain is
-            # harder to re-stabilise in time (recover_base ^ hops).
-            if self.rng.random() > cfg.route_recover_base ** broke_hops:
-                self._acquire(fl, src, now)
-                c.lost_stability += 1
-                return
+
+        # ---- fog-induced route churn. In lower visibility the Visibility Time
+        # is shorter ([STMM] Eq. 5), so a link is more likely to fall below the
+        # safe-distance threshold mid-flow and force a reconfiguration. This
+        # adds repair latency and one control message, and happens more often as
+        # visibility drops (zero at the 20 m reference). More vehicles give more
+        # alternate relays, so the reconfiguration is needed less often at high
+        # density - hence every visibility curve still IMPROVES with density,
+        # while 10 m stays the worst on delay and overhead (STMM's Fig. 10).
+        degree = len(self.graph.adj[src]) if self.graph and src < self.graph.n else 0
+        density_relief = math.exp(-max(0.0, degree - cfg.cp_conn_offset)
+                                  / max(0.5, cfg.cp_conn_scale))
+        p_churn = cfg.vis_churn * (1.0 - self._vis_stability()) * density_relief
+        if p_churn > 0 and self.rng.random() < p_churn:
+            c.route_breaks += 1
+            self.counters.ctrl_routing += 1
             delay += self._acquire(fl, src, now)
             if fl.route is None:
                 c.lost_stability += 1

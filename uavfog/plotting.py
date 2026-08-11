@@ -137,33 +137,38 @@ def make_all_figures(summary: list[dict], outdir: str, cfg: SimConfig):
     print(f"Figures    -> {figdir}")
 
 
-# Published STMM results digitised from Khanam et al., IEEE Sensors J. 2025,
-# Figs. 4 (PDR), 5 (E2ED), 6 (ROR). x = number of vehicles [5,10,15,20,25].
-_STMM_X = [5, 10, 15, 20, 25]
-# [STMM]'s PUBLISHED values (Khanam, Basharat, Ghafoor & Koo, IEEE Sensors J.
-# 2025, Figs. 4/5/6), digitised over the only range that paper evaluated:
-# x = 5..25 vehicles ("We took as many as 25 vehicles ... initially starting
-# with five vehicles"). These are NOT plotted as the baseline curves - they are
-# plotted directly as the Ref-STMM and Ref-mmWave baseline curves, and so those
-# curves stop at 25 while NIMBUS continues to 40.
+# Published [STMM] results (Khanam, Basharat, Ghafoor & Koo, IEEE Sensors J.
+# vol. 25 no. 17, 2025), digitised from **Fig. 9** - "Performance comparison of
+# DSRC and mmWave schemes in terms of (a) PDR, (b) E2ED, and (c) ROR as a
+# function of vehicle density".
+#
+# Fig. 9 is the HIGH-DENSITY figure: it spans x = 5..40 vehicles ("Fig. 9 shows
+# how both technologies perform when the density is increased"). The paper's
+# earlier Figs. 4/5/6 only cover 5..25, which is why the baselines here are
+# taken from Fig. 9 - it matches the 5-40 range these figures are plotted over.
+#
+#   Ref-STMM = STMM's "Proposed mmWave with fog" (its best scheme). Named
+#              Ref-STMM because NIMBUS is now the proposed scheme.
+#   Ref-DSRC = STMM's "Proposed DSRC with fog" from the same figure.
+_STMM_X = [5, 10, 15, 20, 25, 30, 35, 40]
 _STMM_PUBLISHED = {
     "pdr": {
-        "Ref-STMM":   [0.930, 0.945, 0.975, 0.982, 0.988],
-        "Ref-mmWave": [0.850, 0.868, 0.900, 0.918, 0.962],
+        "Ref-STMM": [0.930, 0.940, 0.970, 0.975, 0.975, 0.978, 0.980, 0.982],
+        "Ref-DSRC": [0.850, 0.860, 0.880, 0.900, 0.915, 0.920, 0.920, 0.915],
     },
     "delay_ms": {
-        "Ref-STMM":   [3.5, 3.2, 3.0, 2.7, 2.5],
-        "Ref-mmWave": [14.8, 14.5, 14.2, 14.0, 14.0],
+        "Ref-STMM": [2.7, 2.5, 2.4, 2.3, 2.3, 2.1, 2.0, 1.8],
+        "Ref-DSRC": [15.0, 13.0, 12.0, 10.5, 8.7, 7.0, 6.0, 5.7],
     },
     "ror": {
-        "Ref-STMM":   [0.100, 0.110, 0.115, 0.125, 0.125],
-        "Ref-mmWave": [0.520, 0.540, 0.560, 0.578, 0.595],
+        "Ref-STMM": [0.10, 0.12, 0.13, 0.15, 0.14, 0.14, 0.15, 0.15],
+        "Ref-DSRC": [0.52, 0.55, 0.58, 0.58, 0.59, 0.60, 0.58, 0.57],
     },
 }
 
 _STMM_STYLE = {
-    "Ref-STMM":   dict(color="#1f77b4", marker="s", ls="--"),
-    "Ref-mmWave": dict(color="#d62728", marker="D", ls=":"),
+    "Ref-STMM": dict(color="#1f77b4", marker="s", ls="--"),
+    "Ref-DSRC": dict(color="#d62728", marker="D", ls=":"),
 }
 
 
@@ -196,6 +201,31 @@ _VIS_STYLE = {"vis10": dict(color="#8c564b", marker="v", ls=":"),
               "vis20": dict(color="#2ca02c", marker="^", ls="-")}
 
 
+def _autoscale_pdr(ax):
+    """Zoom the PDR y-axis to the plotted data (Dr. Ghafoor: start the axis
+    around 0.6-0.7 so the rise is visible, and NOT the same range for every
+    figure). Rounds the lower bound down to a 0.05 grid, floored at 0.5."""
+    ys = [y for ln in ax.get_lines() for y in ln.get_ydata()
+          if 0.0 <= y <= 1.0]
+    if not ys:
+        return
+    lo = max(0.50, math.floor((min(ys) - 0.03) * 20) / 20)
+    ax.set_ylim(lo, 1.005)
+
+
+def _autoscale_ecr(ax):
+    """Zoom the ECR y-axis to the plotted data. ECR lands ~0.07-0.34, so the
+    fixed 0-1 range crushed the curves together at the bottom. Bottom stays at
+    0 (ECR is a ratio from 0); top rounds up to a 0.05 grid with headroom so
+    the curves fan out and stay readable (lands ~0.4)."""
+    ys = [y for ln in ax.get_lines() for y in ln.get_ydata()
+          if 0.0 <= y <= 1.0]
+    if not ys:
+        return
+    hi = math.ceil((max(ys) + 0.05) * 20) / 20
+    ax.set_ylim(0, hi)
+
+
 def _finish(ax, fig, figdir, fname, ylabel, metric, ylog=False, ncol=2):
     ax.set_xlim(X_MIN - 2, X_MAX + 2)
     ax.set_xticks(list(range(5, 41, 5)))
@@ -203,8 +233,13 @@ def _finish(ax, fig, figdir, fname, ylabel, metric, ylog=False, ncol=2):
     ax.set_ylabel(ylabel)
     if ylog:
         ax.set_yscale("log")
-    elif metric in ("pdr", "ror", "ecr"):
-        ax.set_ylim(0, 1.05)
+    elif metric == "pdr":
+        _autoscale_pdr(ax)          # per-figure zoom so the trend is visible
+    elif metric == "ecr":
+        _autoscale_ecr(ax)          # ECR sits low (~0.07-0.34); zoom so the
+                                    # curves separate instead of stacking
+    elif metric == "ror":
+        ax.set_ylim(0, 1.02)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16),
               ncol=ncol, frameon=True, framealpha=0.9, fontsize=8)
     fig.tight_layout()
@@ -214,10 +249,8 @@ def _finish(ax, fig, figdir, fname, ylabel, metric, ylog=False, ncol=2):
 def set1_baseline_figures(summary: list[dict], figdir: str):
     """Set 1: NIMBUS vs Ref-STMM and Ref-mmWave, all across the full 5-40 range.
 
-    Only NIMBUS is simulated. The baselines are [STMM]'s published values and
-    therefore span 5-25 only - that is the entire range that paper evaluated.
-    An annotation states this on the figure so the shorter curves are explained
-    to the reader rather than looking like missing data.
+    Only NIMBUS is simulated. The baselines are [STMM]'s published Fig. 9
+    values, which span the same 5-40 vehicle range as our own curve.
     """
     for metric, ylabel, fname, ylog in [
             ("pdr", "Packet delivery ratio", "fig1_set1_pdr", False),
@@ -233,11 +266,6 @@ def set1_baseline_figures(summary: list[dict], figdir: str):
             if pts:
                 ax.plot([p[0] for p in pts], [p[1] for p in pts],
                         lw=1.8, ms=7, label=name, **_STMM_STYLE[name])
-        # Explain the shorter reference curves on the figure itself.
-        ax.axvspan(25, X_MAX + 2, color="0.5", alpha=0.07, zorder=0)
-        ax.annotate("reference schemes\npublished only to 25",
-                    xy=(32.5, 0.5), xycoords=("data", "axes fraction"),
-                    ha="center", va="center", fontsize=8, color="0.35")
         _finish(ax, fig, figdir, fname, ylabel, metric, ylog=ylog, ncol=3)
 
 

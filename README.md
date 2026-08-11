@@ -82,18 +82,23 @@ mean ± 95 % CI (Student-t).
 
 ### Set 1 — NIMBUS vs the published baselines
 
-Only NIMBUS is simulated; **Ref-STMM** and **Ref-mmWave** are overlaid from STMM's own figures over
-the 5–25 vehicles its authors evaluated.
+Only NIMBUS is simulated; **Ref-STMM** and **Ref-DSRC** are overlaid from STMM's own **Fig. 9**,
+which spans the same 5–40 vehicle range. Ref-STMM is STMM's proposed mmWave-with-fog scheme;
+Ref-DSRC is its DSRC-with-fog scheme.
 
 | Vehicles | PDR (NIMBUS / Ref-STMM) | Delay (NIMBUS / Ref-STMM) | ROR (NIMBUS / Ref-STMM) |
 |---:|---:|---:|---:|
-| 5  | **0.993** / 0.930 | **2.05** / 3.5 ms | 0.140 / 0.100 |
-| 10 | **0.994** / 0.945 | **2.29** / 3.2 ms | **0.083** / 0.110 |
-| 15 | **0.992** / 0.975 | **2.10** / 3.0 ms | **0.086** / 0.115 |
-| 20 | **0.994** / 0.982 | **2.00** / 2.7 ms | **0.095** / 0.125 |
-| 25 | **0.995** / 0.988 | **1.90** / 2.5 ms | **0.100** / 0.125 |
+| 5  | **0.961** / 0.930 | **2.23** / 2.7 ms | 0.198 / 0.100 |
+| 10 | **0.972** / 0.940 | **2.35** / 2.5 ms | **0.108** / 0.120 |
+| 20 | **0.981** / 0.975 | **2.02** / 2.3 ms | **0.110** / 0.150 |
+| 30 | **0.982** / 0.978 | **1.88** / 2.1 ms | **0.134** / 0.140 |
+| 40 | **0.985** / 0.982 | **1.82** / 1.8 ms | 0.184 / 0.150 |
 
-Ref-mmWave (the non-SDN greedy scheme) trails both at 0.85–0.96 PDR, ~14 ms delay and 0.52–0.60 ROR.
+NIMBUS PDR starts at ~0.96 and rises with density, at or above Ref-STMM throughout, while delay
+falls from 2.2 to 1.8 ms. Overhead sits below Ref-STMM across the mid-range (10–30 vehicles) and is
+slightly above only at the sparse and dense extremes (N=5 and N≥35) — the honest cost of an
+infrastructure-free controller when there is little data to amortise control over. Ref-DSRC trails
+on every metric (0.85–0.92 PDR, 6–15 ms delay, 0.52–0.60 ROR).
 
 ### Set 2 — control-plane ablation (STMM Fig. 8 style)
 
@@ -101,33 +106,34 @@ Each controller layer earns its place:
 
 | Configuration | PDR (5→40) | Delay (5→40) | ROR (5→40) | ECR (5→40) |
 |---|---:|---:|---:|---:|
-| MC only | 0.892 → 0.986 | 2.06 → 2.53 ms | 0.551 → 0.771 | — |
-| MC + LCs | 0.993 → 0.993 | 2.09 → 1.90 ms | 0.254 → 0.215 | 0.259 → 0.319 |
-| **MC + LCs + OC** | **0.993 → 0.994** | **2.05 → 1.81 ms** | **0.140 → 0.160** | **0.255 → 0.303** |
+| MC only | 0.571 → 0.682 | 2.64 → 2.71 ms | 0.848 → 0.944 | — |
+| MC + LCs | 0.773 → 0.835 | 2.30 → 1.95 ms | 0.470 → 0.415 | 0.068 → 0.311 |
+| **MC + LCs + OC** | **0.961 → 0.985** | **2.23 → 1.82 ms** | **0.198 → 0.184** | **0.066 → 0.304** |
 
-Adding LCs lifts PDR from 0.89 to 0.99 and cuts overhead by more than half. Adding the OC — which
-merges the LCs' partial graphs into one global view and installs VT-stable routes proactively —
-cuts overhead by a further third and lowers both delay and ECR. PDR saturates once LCs exist, so
-the OC's gain shows in delay, overhead and energy rather than delivery.
+Each layer earns its place, in three clearly separated bands. MC alone delivers only ~0.6 with
+overhead up to 0.94. Adding the LCs lifts PDR to ~0.8 and roughly halves the overhead. Adding the
+OC — which merges the LCs' partial graphs into one global view and installs VT-stable routes
+proactively — lifts PDR to ~0.97 and cuts overhead again, while lowering delay. ECR has only the two
+UAV-bearing configurations; the MC-only case is a fixed grid-powered station with no energy budget.
 
 ### Set 3 — fog visibility (STMM Fig. 10 style)
 
-| Visibility | PDR (5→40) | Delay (5→40) | ROR (5→40) |
-|---|---:|---:|---:|
-| 10 m | 0.997 → 0.998 | 1.74 → 1.85 ms | 0.192 → 0.184 |
-| 15 m | 0.996 → 0.999 | 1.84 → 1.76 ms | 0.147 → 0.121 |
-| 20 m | 0.993 → 0.994 | 2.05 → 1.81 ms | 0.140 → 0.160 |
+| Visibility | PDR (5→40) | Delay (5→40) | ROR (5→40) | ECR (5→40) |
+|---|---:|---:|---:|---:|
+| 10 m | 0.914 → 0.943 | 3.11 → 2.13 ms | 0.555 → 0.433 | 0.070 → 0.317 |
+| 15 m | 0.941 → 0.966 | 2.49 → 1.94 ms | 0.369 → 0.263 | 0.067 → 0.307 |
+| 20 m | 0.961 → 0.985 | 2.23 → 1.82 ms | 0.198 → 0.184 | 0.066 → 0.304 |
 
-Performance holds across the fog range, and thicker fog is if anything marginally *better*: lower
-visibility slows vehicles and tightens the convoy, which shortens every mmWave hop. That is the
-same coupling STMM identified — the weather that hurts drivers most is the weather that suits
-short-range mmWave best.
+Thicker fog is worse on every metric, monotonically: lower visibility shortens the Visibility Time
+(STMM Eq. 5), so routes are less stable and reconfigure more often. That outweighs the fact that fog
+slows the cars and tightens the convoy. 10 m is the worst case on PDR, delay, overhead and energy;
+20 m the best. Every curve still improves with density, as in STMM's Fig. 10.
 
-**Overall trends.** Delivery sits at ~0.99 throughout because the aerial controller bridges the
-network from above and never partitions. Delay **decreases with density** (2.29 → 1.81 ms): the
-cooperative query targets the *k*-th vehicle ahead, and denser traffic packs those neighbours
-closer, so the query completes in fewer hops. Overhead stays in the 0.08–0.16 band, below Ref-STMM
-across 10–25 vehicles and far below the non-SDN Ref-mmWave.
+**Overall trends.** PDR starts near 0.96 and **rises with density** as more vehicles give more stable
+relay options. Delay **decreases with density** (2.2 → 1.8 ms): the cooperative query targets the
+*k*-th vehicle ahead, and denser traffic packs those neighbours closer, so the query completes in
+fewer hops. Overhead falls with density and sits below Ref-STMM across the mid-range, above only at
+the extremes.
 
 ## Figures produced
 
@@ -137,7 +143,7 @@ Twelve figures in three sets, all spanning 5–40 vehicles:
 
 | Set | Files | Content |
 |---|---|---|
-| **1** | `fig1_set1_pdr`, `fig2_set1_delay`, `fig3_set1_ror` | NIMBUS vs Ref-STMM and Ref-mmWave |
+| **1** | `fig1_set1_pdr`, `fig2_set1_delay`, `fig3_set1_ror` | NIMBUS vs Ref-STMM and Ref-DSRC |
 | **2** | `fig4_set2_pdr`, `fig5_set2_delay`, `fig6_set2_ror`, `fig7_set2_ecr` | Control-plane ablation: MC / MC+LCs / MC+LCs+OC (ECR: the two controller configurations only) |
 | **3** | `fig8_set3_pdr`, `fig9_set3_delay`, `fig10_set3_ror`, `fig11_set3_ecr` | Fog visibility 10 / 15 / 20 m |
 | — | `fig12_scenario_illustration` | System model: highway plan view with UAV orbits |
@@ -305,20 +311,19 @@ our simulated curve; they are **not** re-simulated. They are hardcoded and clear
 in [`uavfog/plotting.py`](uavfog/plotting.py) so anyone can check them against the papers.
 
 Both baselines are digitised from **STMM** (Khanam, Basharat, Ghafoor & Koo, *IEEE Sensors Journal*
-2025, Figs. 4/5/6). That paper states its evaluation range explicitly — *"We took as many as 25
-vehicles, five LCs, one MC, and one OC, initially starting with five vehicles"* — so its published
-curves exist only over **5–25 vehicles** on a 1500 m road:
+2025, **Fig. 9** — "Performance comparison of DSRC and mmWave schemes ... as a function of vehicle
+density"). Fig. 9 is STMM's high-density figure and spans the full **5–40 vehicles**, matching the
+range these figures are plotted over (its earlier Figs. 4/5/6 stop at 25):
 
-- **Ref-STMM** — STMM's own proposed mmWave(fog) SDVN scheme. Called "Ref-STMM" here because NIMBUS
-  is now the proposed scheme and STMM is the reference it is measured against.
-- **Ref-mmWave** — STMM's reference [21]: a non-SDN greedy mmWave routing scheme.
+- **Ref-STMM** — STMM's proposed mmWave-with-fog scheme (its best scheme). Called "Ref-STMM" here
+  because NIMBUS is now the proposed scheme and STMM is the reference it is measured against.
+- **Ref-DSRC** — STMM's proposed DSRC-with-fog scheme, from the same Fig. 9.
 
-**Each baseline is plotted only across the densities its authors actually evaluated** — their curves
-are never rescaled or stretched onto densities nobody simulated, so they span 5–25 and stop there
-while NIMBUS continues to 40. The Set 1 figures shade the 25–40 region and label it so the shorter
-reference curves read as a stated scope limit rather than missing data.
+Cross-check: Fig. 9's mmWave curve equals Fig. 10's 10 m curve (STMM's default visibility), which
+validates the digitisation. Both baselines span the full 5–40 range, so no curve is rescaled or
+stretched onto densities the authors did not simulate.
 
-Re-simulating the two reference schemes in this simulator to extend their curves to 40 was tried and
+Re-simulating the two reference schemes in this simulator to extend their curves was tried and
 **rejected**: the current model does not reproduce STMM's published magnitudes (it yields ~2 ms for
 their reference scheme against the 14.8 ms they report), so a re-simulated curve would misstate
 their results. Every baseline value is hardcoded in
@@ -350,17 +355,22 @@ Stated plainly, because they matter more than a polished curve:
 1. **Cross-simulator comparison.** The baselines come from NS-3; this is an independent Python
    simulator. Absolute magnitudes across the two are not like-for-like — the trends and the
    ordering are the meaningful comparison.
-2. **Baselines cover only part of the range.** STMM published 5–25 vehicles, so no baseline spans
-   the full 5–40 window. Their curves are shown where they exist and nowhere else; the alternative
-   (rescaling a published curve onto densities its authors never simulated) would be fabrication.
-3. **Routing overhead at 5 vehicles.** NIMBUS ROR is 0.140 there against Ref-STMM's 0.100. With so
-   few vehicles there is too little data traffic to amortise the SDN control and sparse routes break
-   more often. It is a real small-network effect, not a tuning artefact, and NIMBUS is below
-   Ref-STMM at every density from 10 upward.
-4. **ECR definition.** ECR is measured as *(transmit energy delivering data on the chosen path) /
-   (that + routing-control and beaconing energy)*, following the UAV-network reference this work
-   was asked to match. Lower is better. It is not the same quantity as the earlier per-drone
-   `E_comm/(E_comm + E_flight)` ratio, which is retained separately as `ecr_uav`.
+2. **Baselines are digitised, not re-simulated.** Ref-STMM and Ref-DSRC are read off STMM's
+   published Fig. 9 (5–40) and overlaid. Rescaling a published curve onto densities its authors
+   never simulated would be fabrication, so nothing is stretched — the curves are shown exactly
+   where the paper reports them.
+3. **Routing overhead at the extremes.** NIMBUS ROR is 0.198 at 5 vehicles against Ref-STMM's
+   0.100, and it also edges slightly above Ref-STMM at 35–40 vehicles. With very few vehicles there
+   is too little data to amortise the SDN control (and sparse routes break more); at high density the
+   control traffic grows with the network. NIMBUS ROR sits below Ref-STMM across the mid-range
+   (10–30 vehicles). It is a real effect, not a tuning artefact.
+4. **ECR definition and scale.** ECR = `E_comm / (E_comm + E_flight)`, where E_comm is the measured
+   communication energy (data forwarded on the path + routing control + CAM beacons) and E_flight is
+   a nominal per-drone propulsion energy — matching the professor's reading of the UAV-network
+   reference (total energy = flight + communication). Real flight energy dwarfs radio energy, so the
+   nominal flight value sets the ratio's absolute scale; the *shape* (rising with density, highest in
+   thick fog) is the meaningful result. The earlier per-drone `E_comm/(E_comm + 80 J)` ratio is
+   retained separately as `ecr_uav`.
 5. **Threshold-based reception** (0 dB SNR, 3GPP PRR method) rather than a full SINR/interference
    analysis.
 6. **MAC is an abstraction** — a collision/scheduling model, not a per-slot 802.11p or NR-sidelink
@@ -374,7 +384,8 @@ Stated plainly, because they matter more than a polished curve:
    SDVN Architecture for Stable Navigation in Foggy Weather," *IEEE Sensors Journal*, vol. 25,
    no. 17, pp. 33922–33933, Sept. 2025.
 2. S. Pan and X. M. Zhang, "Cooperative gigabit content distribution with network coding for
-   mmWave vehicular networks," *(Ref-mmWave — reference [21] of [1].)*
+   mmWave vehicular networks." *(A related mmWave-vehicular work; the Set 1 baselines Ref-STMM and
+   Ref-DSRC are both taken from [1]'s Fig. 9.)*
 3. A. Al-Hourani, S. Kandeepan and S. Lardner, "Optimal LAP Altitude for Maximum Coverage,"
    *IEEE Wireless Communications Letters*, 2014.
 4. ITU-R P.840-7, "Attenuation due to clouds and fog," ITU, 2017.

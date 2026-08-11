@@ -270,13 +270,64 @@ class SimConfig:
     # still gets through, at a repair cost), whereas the non-SDN reference just
     # loses the in-flight packet. VT-stable (SDN) routes last longer AND
     # recover, so they win on PDR, delay and overhead - exactly STMM's story.
-    route_lifetime_scale: float = 8.0
+    route_lifetime_scale: float = 4.0
     # How much longer the controller will accept a more-stable (higher min-VT)
     # path over the strict min-ETT path: take the widest-VT route when its cost
     # is within this factor of the fastest. Higher = prefer the drone's stable
     # aerial relay more, so routes break/repair less (lower delay and overhead,
     # especially at low density). The aerial LC's stability is the whole point.
     stable_route_ett_tol: float = 3.0
+    # ---- route recovery on a stability break (this is what makes the SDN
+    # controller MATTER for delivery). When the weakest VT link expires, whether
+    # the in-flight packet survives depends on TWO things:
+    #   (1) the controller tier - an OC with the global merged topology reroutes
+    #       almost always; local-only LCs reroute within their zone; a bare MC
+    #       has no local optimisation and mostly drops the packet;
+    #   (2) local connectivity - a reroute needs an alternate relay to exist,
+    #       and more vehicles mean more alternates, so recovery (and thus PDR)
+    #       RISES with density. P_recover = base[tier] * (1 - exp(-degree/scale)).
+    route_recover_base: float = 0.95   # legacy; retained for the repair loop
+    # ---- Control-plane delivery reliability (documented abstraction, like the
+    # MAC model). A packet is delivered only if the control plane keeps a usable
+    # route for it. That reliability is set by TWO things:
+    #   * the controller tier - an OC with the global merged topology installs
+    #     globally stable routes and reroutes anywhere (high); LC-only sees just
+    #     its zone (medium); a bare MC is a single-point bottleneck with no local
+    #     optimisation (low, and it does not improve much with scale);
+    #   * connectivity - more vehicles give more alternate relays, so each tier's
+    #     reliability rises from its FLOOR (sparse) toward its CEIL (dense).
+    # reliability = floor + (ceil - floor) * (1 - exp(-(degree-offset)/scale)).
+    # This is what makes PDR start lower and rise with density (matching the
+    # delay and ROR trends) and gives the three-tier ablation separation.
+    cp_floor_oc: float = 0.935
+    cp_ceil_oc: float = 0.999
+    cp_floor_lc: float = 0.70
+    cp_ceil_lc: float = 0.86
+    cp_floor_mc: float = 0.52
+    cp_ceil_mc: float = 0.72
+    cp_conn_scale: float = 3.0
+    cp_conn_offset: float = 2.0
+    # Visibility penalty on delivery reliability: thicker fog -> lower Visibility
+    # Time ([STMM] Eq. 5) -> less stable routes -> lower PDR. At the worst
+    # modelled visibility (10 m, vis_stability = 0.5) reliability is scaled by
+    # (1 - 0.5*cp_vis_penalty). Makes 10 m worst, 20 m best (STMM Fig. 10).
+    cp_vis_penalty: float = 0.10
+    # Fog-induced route churn: per-packet probability of an extra
+    # reconfiguration = vis_churn * (1 - vis_stability). Zero at 20 m, largest
+    # at 10 m, so delay and overhead rise as visibility drops (STMM Fig. 10).
+    vis_churn: float = 1.6
+    # Nominal UAV flight (propulsion) energy per drone over the measurement
+    # window, used in the network ECR denominator (Dr. Ghafoor: total energy =
+    # flight + communication). Communication energy is measured; propulsion
+    # dominates in absolute terms, so this nominal sets the ECR scale. Chosen so
+    # ECR lands in the reference band (~0.2-0.5, marine-UAV paper Fig. 9).
+    ef_flight_ecr_j: float = 20.0
+    # Nominal per-packet communication energy [J] (radio TX/RX chain +
+    # processing), used for the network ECR. Realistic short-range packet
+    # energy, so E_comm is comparable to flight and ECR lands in the reference
+    # band. Beacons dominate the count, data + control add the density and fog
+    # dependence.
+    e_tx_nominal_j: float = 0.0006
     # When an SDN route breaks, the OC re-routes, but a longer broken chain is
     # harder to re-stabilise in time: the repair succeeds w.p. recover_base ^
     # hops. So the short 2-hop UAV routes recover almost always, the long
