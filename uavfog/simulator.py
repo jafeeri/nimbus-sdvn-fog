@@ -125,14 +125,31 @@ class Simulation:
         # when a link has disappeared (as real routing protocols do)
 
     # -------------------------------------------------------------- control
+    def _uav_lc_slots(self) -> list[int]:
+        """Positions within _lc_indices whose node is a UAV. These are the
+        data-capable, OC-eligible LCs; roadside RSU LCs are control-only and
+        never become the OC (Dr. Ghafoor: the OC is a drone throughout)."""
+        return [i for i, idx in enumerate(self._lc_indices)
+                if self.nodes[idx].kind == UAV]
+
     def _lc_hello_counts(self) -> list[float]:
         """[STMM] hellomessages: control messages each LC receives in t seconds
         = (vehicles in range) x CAM rate x hello_window_s. This is the count
-        the OC-selection SVM (Alg. 1) and Eq.(1) both use."""
+        the OC-selection SVM (Alg. 1) and Eq.(1) both use.
+
+        A roadside RSU LC carries no data edges (it is control-only), so it
+        cannot be counted from the routing graph; instead it monitors the
+        vehicles within its CAM range geometrically."""
         counts = []
         for lc in self._lc_indices:
-            n_heard = sum(1 for v, e in self.graph.neighbors(lc)
-                          if self.nodes[v].kind == VEHICLE)
+            if self.nodes[lc].kind == RSU:
+                rng = self.radio.r_max_v2i_m
+                n_heard = sum(1 for i in range(self.fleet.n)
+                              if abs(self.terrain.wrapped_dx(
+                                  self.nodes[lc].x, self.fleet.x[i])) <= rng)
+            else:
+                n_heard = sum(1 for v, e in self.graph.neighbors(lc)
+                              if self.nodes[v].kind == VEHICLE)
             counts.append(n_heard * self.cfg.cam_rate_hz * self.cfg.hello_window_s)
         return counts
 
@@ -181,15 +198,19 @@ class Simulation:
         This is the partial view a single Local Controller holds: the vehicles
         it hears directly, plus itself. Without an OC to merge these sub-graphs
         it is all the control plane can plan with ([STMM] Sec. III)."""
-        if not self._lc_indices:
+        # Routing is a DATA-plane concern, so only the data-capable (UAV) LCs
+        # form a coverage zone; control-only RSU LCs are excluded here.
+        data_lcs = [idx for idx in self._lc_indices
+                    if self.nodes[idx].kind == UAV] or self._lc_indices
+        if not data_lcs:
             return set()
         best_lc, best_d = None, math.inf
-        for lc in self._lc_indices:
+        for lc in data_lcs:
             e = self.graph.edge(src, lc)
             if e is not None and e["d3"] < best_d:
                 best_lc, best_d = lc, e["d3"]
         if best_lc is None:                      # not covered by any LC
-            best_lc = min(self._lc_indices,
+            best_lc = min(data_lcs,
                           key=lambda l: abs(self.terrain.wrapped_dx(
                               self.nodes[l].x, self.nodes[src].x)))
         zone = {best_lc, src}
@@ -515,9 +536,16 @@ class Simulation:
             if len(self._lc_indices) >= 2 and not (self.scenario.has_uav
                                                    and self.cfg.oc_fixed_on_uav):
                 self.oc_index = self.oc_selector.select(self._hello_window)
+            elif self.scenario.has_uav and self.cfg.oc_fixed_on_uav:
+                # NIMBUS: the OC is a drone. Among the UAV LCs pick the one
+                # covering the most vehicles, then keep it. RSU LCs are
+                # control-only and never eligible to be the OC.
+                uav_slots = self._uav_lc_slots()
+                self.oc_index = (max(uav_slots, key=lambda i: self._hello_window[i])
+                                 if uav_slots and self._hello_window else 0)
             elif self._hello_window:
-                # single LC, or the fixed drone OC: pick the LC covering the
-                # most vehicles once, then keep it (STMM: OC = highest density)
+                # single LC: pick the LC covering the most vehicles once, then
+                # keep it (STMM: OC = highest density)
                 self.oc_index = int(np.argmax(self._hello_window))
             else:
                 self.oc_index = 0
@@ -577,8 +605,12 @@ class Simulation:
                 self._send_packet(src, t)
             t += dt
 
-        # hello beaconing overhead (broadcast, one per beacon) over the window
-        n_beaconers = self.fleet.n + len(self._lc_indices)
+        # hello beaconing overhead (broadcast, one per beacon) over the window.
+        # Roadside RSU LCs are grid-powered (like the MC), so their beacons do
+        # not enter the UAV-energy ECR - only vehicles and the aerial LCs count.
+        n_uav_lcs = sum(1 for idx in self._lc_indices
+                        if self.nodes[idx].kind == UAV)
+        n_beaconers = self.fleet.n + n_uav_lcs
         self.counters.ctrl_beacons += n_beaconers * cfg.cam_rate_hz * cfg.sim_time_s
 
         # ECR denominator: everything the network spends that is NOT delivering

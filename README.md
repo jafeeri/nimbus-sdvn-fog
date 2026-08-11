@@ -107,7 +107,7 @@ Each controller layer earns its place:
 | Configuration | PDR (5→40) | Delay (5→40) | ROR (5→40) | ECR (5→40) |
 |---|---:|---:|---:|---:|
 | MC only | 0.571 → 0.682 | 2.64 → 2.71 ms | 0.848 → 0.944 | — |
-| MC + LCs | 0.773 → 0.835 | 2.30 → 1.95 ms | 0.470 → 0.415 | 0.068 → 0.311 |
+| MC + LCs | 0.773 → 0.835 | 2.30 → 1.95 ms | 0.478 → 0.416 | 0.068 → 0.311 |
 | **MC + LCs + OC** | **0.961 → 0.985** | **2.23 → 1.82 ms** | **0.198 → 0.184** | **0.066 → 0.304** |
 
 Each layer earns its place, in three clearly separated bands. MC alone delivers only ~0.6 with

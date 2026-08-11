@@ -73,7 +73,13 @@ def build_nodes(cfg: SimConfig, scenario: Scenario, fleet, terrain: Terrain,
     for i in range(fleet.n):
         nodes.append(Node(i, VEHICLE, float(xs[i]), float(ys[i]), float(zs[i]),
                           float(fleet.v[i]), float(fleet.height[i])))
-    if scenario.has_rsu:
+    # RSUs are spawned either as the data infrastructure (RSU scenarios) OR, in
+    # the NIMBUS/UAV scenario, as roadside Local Controllers alongside the drones
+    # (Dr. Ghafoor: 2 drones + 2 RSUs, RSUs act as LCs). In the UAV scenario the
+    # RSUs are control-plane LCs only - they monitor their zone and feed the OC,
+    # but the aerial mmWave mesh is the data backbone, so build_graph does not
+    # give them data-forwarding edges (see there).
+    if scenario.has_rsu or (scenario.has_uav and cfg.n_rsu > 0):
         for k in range(cfg.n_rsu):
             x = float(cfg.rsu_positions_m[k % len(cfg.rsu_positions_m)])
             z = float(terrain.elevation(x)) + cfg.rsu_height_m  # mast on the ground plane
@@ -176,13 +182,16 @@ def build_graph(cfg: SimConfig, radio: RadioConfig, scenario: Scenario,
             pair = {a.kind, b.kind}
             if pair == {VEHICLE}:
                 add_link(a, b, radio.r_max_v2v_m, radio.ant_gain_v2v_db, "v2v")
-            elif pair == {VEHICLE, RSU}:
+            elif pair == {VEHICLE, RSU} and not scenario.has_uav:
+                # In NIMBUS the RSUs are control-plane LCs, not data relays, so
+                # they carry no V2I data edges - the aerial mmWave mesh is the
+                # data backbone. Only the pure RSU scenarios wire V2I links.
                 add_link(a, b, radio.r_max_v2i_m, radio.ant_gain_v2i_db, "v2i")
             elif pair == {VEHICLE, UAV}:
                 add_link(a, b, radio.r_max_a2g_m, radio.ant_gain_a2g_db, "a2g")
             elif pair == {UAV}:
                 add_link(a, b, 2000.0, radio.ant_gain_a2g_db, "a2a")
-            elif pair == {RSU}:
+            elif pair == {RSU} and not scenario.has_uav:
                 # wired/LTE backhaul between RSUs: reliable fixed-delay edge
                 g.add_edge(a.idx, b.idx, dict(
                     snr=99.0, rate=cfg.backhaul_capacity_bps, d2=0.0, d3=0.0,

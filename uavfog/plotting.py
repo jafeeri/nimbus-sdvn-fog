@@ -329,26 +329,40 @@ def scenario_illustration(cfg: SimConfig, figdir: str):
                    s=26, c="k", marker=">", zorder=5)
     ax.scatter([], [], s=26, c="k", marker=">", label="vehicles")
 
-    # UAV local controllers on their elliptical orbits (true ellipses in plan)
+    # UAV controllers on their elliptical orbits: one drone is the OC, the rest
+    # are aerial LCs (true ellipses in plan view).
     n_uav = cfg.n_uav
     th = np.linspace(0, 2 * np.pi, 120)
     cy = road_w / 2.0
     for k in range(n_uav):
         ux = (k + 0.5) / n_uav * L
+        col = "#2ca02c" if k == 0 else "#1f77b4"
         ax.plot(ux + cfg.uav_orbit_a_m * np.cos(th),
                 cy + cfg.uav_orbit_b_m * np.sin(th),
-                "--", c="#2ca02c", lw=1.6, zorder=4)
-        ax.scatter([ux + cfg.uav_orbit_a_m], [cy], s=150, c="#2ca02c",
+                "--", c=col, lw=1.6, zorder=4)
+        ax.scatter([ux + cfg.uav_orbit_a_m], [cy], s=160, c=col,
                    marker="X", zorder=7, edgecolor="k")
     ax.scatter([], [], s=150, c="#2ca02c", marker="X",
-               label="UAV LC, z=%.0f m (elliptical orbit)" % cfg.uav_altitude_m)
+               label="UAV = OC, z=%.0f m" % cfg.uav_altitude_m)
+    if n_uav > 1:
+        ax.scatter([], [], s=150, c="#1f77b4", marker="X",
+                   label="UAV = LC, z=%.0f m" % cfg.uav_altitude_m)
+
+    # roadside RSU local controllers (control-plane LCs beside the carriageway;
+    # the aerial mmWave mesh carries the data, the RSUs feed their views to OC)
+    if cfg.n_rsu > 0:
+        for k in range(cfg.n_rsu):
+            rx = float(cfg.rsu_positions_m[k % len(cfg.rsu_positions_m)])
+            ax.scatter([rx], [cfg.rsu_offset_y_m], s=150, c="#d62728",
+                       marker="s", zorder=7, edgecolor="k")
+        ax.scatter([], [], s=150, c="#d62728", marker="s", label="RSU = LC")
 
     ax.set_xlim(0, L)
-    ax.set_ylim(-8, road_w + cfg.uav_orbit_b_m + 6)
+    ax.set_ylim(-10, road_w + cfg.uav_orbit_b_m + 6)
     ax.set_xlabel("Along-road distance x [m]")
     ax.set_ylabel("Across-road y [m]")
-    ax.set_title("Straight fog highway (%.0f m, %d lanes) with %d UAV LCs (mmWave)"
-                 % (L, cfg.n_lanes, n_uav))
-    ax.legend(loc="upper center", ncol=2, bbox_to_anchor=(0.5, -0.28))
+    ax.set_title("NIMBUS on a fog highway (%.0f m, %d lanes): %d drones + %d RSUs as controllers"
+                 % (L, cfg.n_lanes, n_uav, cfg.n_rsu))
+    ax.legend(loc="upper center", ncol=4, bbox_to_anchor=(0.5, -0.28))
     fig.tight_layout()
     _save(fig, figdir, "fig12_scenario_illustration")
